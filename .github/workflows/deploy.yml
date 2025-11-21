@@ -2,24 +2,23 @@ name: Deploy to Hostinger
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Push to build branch
-        uses: s0/git-publish-subdir-action@develop
-        env:
-          REPO: self
-          BRANCH: build
-          FOLDER: .
-          GITHUB_TOKEN: ${{ secrets.MY_PAT }}
-          MESSAGE: "Deploy: {sha}"
+        uses: actions/checkout@v3
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
-          debug: true
-          skip-if-unchanged: false
+          server: ftp.aislotions.com
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./
+          server-dir: public_html/
+          protocol: ftp
