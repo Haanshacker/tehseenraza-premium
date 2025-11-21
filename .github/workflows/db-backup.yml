@@ -1,0 +1,57 @@
+name: MySQL Database Backup (SSH)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 2 * * *"
+
+permissions:
+  contents: read
+
+env:
+  REMOTE_DB_BACKUP_DIR: /home/u711730434/domains/tehseenraza.net/backups/db
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Backup DB via mysqldump
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+        run: |
+          TS=$(date +%Y%m%d-%H%M%S)
+          OUT="db-$TS.sql.gz"
+          ssh -p $SSH_PORT $SSH_USER@$SSH_HOST "
+            mkdir -p $REMOTE_DB_BACKUP_DIR &&
+            mysqldump -h $DB_HOST -u $DB_USER -p'$DB_PASSWORD' $DB_NAME | gzip > $REMOTE_DB_BACKUP_DIR/$OUT
+          "
+          echo "Database backup saved: $OUT"
+
+      - name: Download backup to artifact
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          ssh -p $SSH_PORT $SSH_USER@$SSH_HOST "ls -1t $REMOTE_DB_BACKUP_DIR | head -1" > latest.txt
+          FILE=$(cat latest.txt)
+          scp -P $SSH_PORT $SSH_USER@$SSH_HOST:$REMOTE_DB_BACKUP_DIR/$FILE .
+          echo "Downloaded: $FILE"
+
+      - name: Upload DB backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup
+          path: "*.gz"
