@@ -49,22 +49,26 @@ jobs:
           if [ -f "$SRC" ]; then cp "$SRC" "$DEST"; fi
 
       #########################################
-      # Create backup on server (via SSH)
+      # Server Backup (SSH)
       #########################################
-      - name: Create timestamped server backup
+      - name: Create backup on server
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           TS=$(date +%Y%m%d-%H%M%S)
-          ssh -p $SSH_PORT $SSH_USER@$SSH_HOST "mkdir -p $REMOTE_BACKUP_DIR && cd $REMOTE_THEME_DIR && zip -r $REMOTE_BACKUP_DIR/theme-$TS.zip ."
+          ssh -p $SSH_PORT $SSH_USER@$SSH_HOST "
+            mkdir -p $REMOTE_BACKUP_DIR &&
+            cd $REMOTE_THEME_DIR &&
+            zip -r $REMOTE_BACKUP_DIR/theme-$TS.zip .
+          "
 
       #########################################
-      # Deploy using FTP (correct version)
+      # FTP DEPLOY (fixed version)
       #########################################
       - name: Deploy to Hostinger FTP
-        uses: SamKirkland/FTP-Deploy-Action@v5
+        uses: SamKirkland/FTP-Deploy-Action@4.3.0
         with:
           server: ${{ secrets.FTP_HOST }}
           username: ${{ secrets.FTP_USERNAME }}
