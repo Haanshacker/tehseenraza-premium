@@ -1,0 +1,160 @@
+name: Deploy WordPress Theme to Production (Hostinger, backup + FTP)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  THEME_DIR: guest-newsletter-theme
+  REMOTE_THEME_DIR: /home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/guest-newsletter-theme
+  REMOTE_BACKUP_DIR: /home/u711730434/domains/tehseenraza.net/backups/guest-newsletter-theme
+
+jobs:
+  lint:
+    name: PHP Lint (quick)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+      - name: Quick PHP lint
+        run: |
+          set -e
+          files=$(git ls-files '*.php')
+          if [ -z "$files" ]; then echo "No PHP files." && exit 0; fi
+          for f in $files; do
+            php -l "$f" || (echo "PHP lint failed for $f" && exit 1)
+          done
+
+  deploy:
+    name: Backup on server → Deploy via FTP → Upload ZIP
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Auto bump version in style.css
+        id: bump
+        run: |
+          FILE="style.css"
+          NEW_VER="1.0.0"
+          if [ -f "$FILE" ]; then
+            OLD_VER=$(grep -i "Version:" style.css | head -1 | awk '{print $2}')
+            if [ -z "$OLD_VER" ]; then OLD_VER="1.0.0"; fi
+            IFS='.' read -r major minor patch <<< "$OLD_VER"
+            NEW_VER="$major.$minor.$((patch+1))"
+            sed -i "s/Version: $OLD_VER/Version: $NEW_VER/" style.css
+          fi
+          echo "new_version=$NEW_VER" >> $GITHUB_OUTPUT
+
+      - name: Prepare theme folder
+        run: |
+          rm -rf $THEME_DIR
+          mkdir -p $THEME_DIR
+          cp -R ./* $THEME_DIR || true
+          rm -rf $THEME_DIR/.github
+
+      - name: Inject screenshot into theme (uploaded path)
+        run: |
+          SRC="/mnt/data/2C101955-4BB9-4665-9DDD-4718E82796B5.jpeg"
+          DEST="./${THEME_DIR}/screenshot.png"
+          if [ -f "$SRC" ]; then cp "$SRC" "$DEST" && echo "screenshot_copied=true" || echo "screenshot_copied=false"; else echo "screenshot_copied=false"; fi
+
+      - name: Archive theme locally (zip)
+        run: |
+          zip -r ${THEME_DIR}-deploy.zip $THEME_DIR
+
+      ################################################################
+      # Create server-side backup via SSH (requires SSH access)
+      # The workflow will:
+      #  - ensure REMOTE_BACKUP_DIR exists
+      #  - create timestamped zip of current theme folder on server
+      #  - leave backups on server for rollback
+      ################################################################
+      - name: Setup SSH (add key & known_hosts)
+        uses: webfactory/ssh-agent@v0.8.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Ensure remote backup dir exists and create backup
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BACKUP_NAME="guest-newsletter-theme-${TIMESTAMP}.zip"
+          echo "Creating backup on server: $BACKUP_NAME"
+          ssh -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} "mkdir -p '${REMOTE_BACKUP_DIR}' && cd '${REMOTE_THEME_DIR}' && zip -r '${REMOTE_BACKUP_DIR}/'${BACKUP_NAME} . || true && echo 'backup_done:${BACKUP_NAME}'"
+          echo "Backup created on server (if remote SSH reachable)."
+
+      ################################################################
+      # Deploy via FTP (SamKirkland/FTP-Deploy-Action)
+      ################################################################
+      - name: Deploy to FTP (Hostinger)
+        uses: SamKirkland/FTP-Deploy-Action@v4
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || '21' }}
+          protocol: ftp
+          local-dir: $THEME_DIR
+          server-dir: $REMOTE_THEME_DIR
+          exclude: |
+            **/.git*
+            **/.github*
+            **/node_modules
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: theme-${{ steps.bump.outputs.new_version }}-zip
+          path: ${THEME_DIR}-deploy.zip
+
+      ################################################################
+      # Notifications
+      ################################################################
+      - name: Telegram notification
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            MSG="🚀 Theme deployed to production — version ${{ steps.bump.outputs.new_version }} by $GITHUB_ACTOR"
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" -d chat_id="${TELEGRAM_CHAT_ID}" -d text="$MSG"
+          else
+            echo "Telegram secrets missing — skipping"
+          fi
+
+      - name: Discord notification
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            curl -s -H "Content-Type: application/json" -d "{\"content\":\"🚀 Production deploy complete — version ${{ steps.bump.outputs.new_version }}\"}" "$DISCORD_WEBHOOK"
+          else
+            echo "No Discord webhook — skipping"
+          fi
+
+      - name: Email notification (webhook)
+        if: always()
+        env:
+          EMAIL_WEBHOOK: ${{ secrets.EMAIL_WEBHOOK }}
+        run: |
+          if [ -n "$EMAIL_WEBHOOK" ]; then
+            curl -s -X POST "$EMAIL_WEBHOOK" -H "Content-Type: application/json" -d "{\"subject\":\"Theme Deployed\",\"message\":\"Version ${{ steps.bump.outputs.new_version }} deployed to tehseenraza.net by $GITHUB_ACTOR\"}"
+          else
+            echo "No email webhook configured — skipping"
+          fi
