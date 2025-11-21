@@ -22,3 +22,5 @@ jobs:
           local-dir: ./
           server-dir: public_html/
           protocol: ftp
+- name: Debug secrets
+  run: echo "Username is ${{ secrets.FTP_USERNAME }}"
