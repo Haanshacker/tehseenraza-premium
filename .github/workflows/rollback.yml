@@ -1,67 +1,55 @@
-name: Rollback Theme to Previous Server Backup
+name: Rollback Theme to Previous Backup
 
 on:
   workflow_dispatch:
     inputs:
-      backup_file:
-        description: 'Name of backup zip on server (if empty -> latest will be used)'
+      file:
+        description: 'Backup filename (leave empty -> use latest)'
         required: false
         default: ''
 
 permissions:
   contents: read
 
+env:
+  REMOTE_BACKUP_DIR: /home/u711730434/domains/tehseenraza.net/backups/guest-newsletter-theme
+  REMOTE_THEME_DIR: /home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/guest-newsletter-theme
+
 jobs:
   rollback:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout (for artifacts)
-        uses: actions/checkout@v4
 
-      - name: Setup SSH agent
+    steps:
+      - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Determine backup file (remote)
-        id: select
+      - name: Determine backup file
+        id: pick
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          REMOTE_BACKUP_DIR: /home/u711730434/domains/tehseenraza.net/backups/guest-newsletter-theme
         run: |
-          if [ -n "${{ github.event.inputs.backup_file }}" ]; then
-            echo "user selected: ${{ github.event.inputs.backup_file }}"
-            echo "chosen_backup=${{ github.event.inputs.backup_file }}" >> $GITHUB_OUTPUT
+          FILE="${{ github.event.inputs.file }}"
+
+          if [ -n "$FILE" ]; then
+            echo "chosen=$FILE" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Get latest backup file
-          LATEST=$(ssh -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} "ls -1t ${REMOTE_BACKUP_DIR} | head -1")
-          if [ -z "$LATEST" ]; then
-            echo "no_backup_found=true" >> $GITHUB_OUTPUT
-            echo "No backups found in remote dir: ${REMOTE_BACKUP_DIR}"
-            exit 1
-          fi
-          echo "chosen_backup=$LATEST" >> $GITHUB_OUTPUT
-          echo "Latest backup will be used: $LATEST"
+          LATEST=$(ssh -p $SSH_PORT $SSH_USER@$SSH_HOST "ls -1t $REMOTE_BACKUP_DIR | head -1")
+          echo "chosen=$LATEST" >> $GITHUB_OUTPUT
 
-      - name: Restore latest backup on server
-        if: steps.select.outputs.no_backup_found != 'true'
+      - name: Restore backup on server
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          REMOTE_THEME_DIR: /home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/guest-newsletter-theme
-          REMOTE_BACKUP_DIR: /home/u711730434/domains/tehseenraza.net/backups/guest-newsletter-theme
         run: |
-          BACKUP=${{ steps.select.outputs.chosen_backup }}
-          echo "Restoring $BACKUP to theme dir..."
-          ssh -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} "cd ${REMOTE_THEME_DIR} && rm -rf * && cd /tmp && unzip -o ${REMOTE_BACKUP_DIR}/$BACKUP -d ${REMOTE_THEME_DIR} || (echo 'unzip failed' && exit 1)"
-          echo "Restore command executed on server."
-
-      - name: Notify rollback complete
-        if: always()
-        run: |
-          echo "Rollback finished (check server)."
+          BACKUP=${{ steps.pick.outputs.chosen }}
+          ssh -p $SSH_PORT $SSH_USER@$SSH_HOST "
+            rm -rf $REMOTE_THEME_DIR/* &&
+            unzip -o $REMOTE_BACKUP_DIR/$BACKUP -d $REMOTE_THEME_DIR
+          "
