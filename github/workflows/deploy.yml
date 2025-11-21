@@ -7,6 +7,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required for pushing to build branch
     steps:
       - uses: actions/checkout@v4
       - name: Push to build branch
@@ -15,5 +17,7 @@ jobs:
           REPO: self
           BRANCH: build
           FOLDER: .
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Explicitly use GITHUB_TOKEN
           MESSAGE: "Deploy: {sha}"
+        with:
+          debug: true # Add debug output to see token usage
