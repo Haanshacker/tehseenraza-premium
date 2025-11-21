@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       #########################################
-      # SSH agent (FIXED VERSION)
+      # Setup SSH (correct version)
       #########################################
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
@@ -32,7 +32,7 @@ jobs:
       #########################################
       # Prepare theme folder
       #########################################
-      - name: Prepare theme
+      - name: Prepare theme folder
         run: |
           rm -rf $THEME_DIR
           mkdir -p $THEME_DIR
@@ -49,28 +49,21 @@ jobs:
           if [ -f "$SRC" ]; then cp "$SRC" "$DEST"; fi
 
       #########################################
-      # Create local ZIP
+      # Create backup on server (via SSH)
       #########################################
-      - name: Build ZIP
-        run: |
-          zip -r ${THEME_DIR}.zip $THEME_DIR
-
-      #########################################
-      # Server-side backup (SSH)
-      #########################################
-      - name: Create backup on server
+      - name: Create timestamped server backup
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           TS=$(date +%Y%m%d-%H%M%S)
           ssh -p $SSH_PORT $SSH_USER@$SSH_HOST "mkdir -p $REMOTE_BACKUP_DIR && cd $REMOTE_THEME_DIR && zip -r $REMOTE_BACKUP_DIR/theme-$TS.zip ."
 
       #########################################
-      # FTP Deploy (FIXED VERSION)
+      # Deploy using FTP (correct version)
       #########################################
-      - name: Deploy via FTP
+      - name: Deploy to Hostinger FTP
         uses: SamKirkland/FTP-Deploy-Action@v5
         with:
           server: ${{ secrets.FTP_HOST }}
@@ -81,15 +74,15 @@ jobs:
           local-dir: $THEME_DIR
           server-dir: $REMOTE_THEME_DIR
           exclude: |
-            **/.git*
             **/.github*
+            **/.git*
             **/node_modules
 
       #########################################
       # Upload ZIP artifact
       #########################################
-      - name: Upload zip artifact
+      - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
           name: theme-production
-          path: ${THEME_DIR}.zip
+          path: $THEME_DIR
