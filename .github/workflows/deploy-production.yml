@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  THEME_DIR: guest-newsletter-theme
+  THEME_DIR: tehseenraza-premium
   REMOTE_THEME_DIR: "/home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/guest-newsletter-theme/"
   REMOTE_BACKUP_DIR: "/home/u711730434/domains/tehseenraza.net/backups/theme-backups/"
 
