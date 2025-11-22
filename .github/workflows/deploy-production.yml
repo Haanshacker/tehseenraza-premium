@@ -32,12 +32,15 @@ jobs:
       #########################################
       # Prepare theme folder
       #########################################
-      - name: Prepare theme folder
-        run: |
-          rm -rf $THEME_DIR
-          mkdir -p $THEME_DIR
-          cp -R ./* $THEME_DIR
-          rm -rf $THEME_DIR/.github
+  - name: Prepare theme folder
+  run: |
+    THEME_DIR="theme-build"
+    rm -rf $THEME_DIR
+    mkdir $THEME_DIR
+
+    # Copy ONLY theme files in root directory into theme-build
+    shopt -s extglob
+    cp -r !(theme-build|.github) $THEME_DIR
 
       #########################################
       # Inject screenshot
