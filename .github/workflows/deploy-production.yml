@@ -10,8 +10,8 @@ permissions:
 
 env:
   THEME_DIR: guest-newsletter-theme
-  REMOTE_THEME_DIR: /home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/guest-newsletter-theme
-  REMOTE_BACKUP_DIR: /home/u711730434/domains/tehseenraza.net/backups/guest-newsletter-theme
+  REMOTE_THEME_DIR: "/home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/guest-newsletter-theme/"
+  REMOTE_BACKUP_DIR: "/home/u711730434/domains/tehseenraza.net/backups/theme-backups/"
 
 jobs:
   deploy:
@@ -21,75 +21,38 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      #########################################
-      # Setup SSH (correct version)
-      #########################################
+      #############################################
+      # Setup SSH
+      #############################################
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      #########################################
-      # Prepare theme folder
-      #########################################
-  - name: Prepare theme folder
-  run: |
-    THEME_DIR="theme-build"
-    rm -rf $THEME_DIR
-    mkdir $THEME_DIR
-
-    # Copy ONLY theme files in root directory into theme-build
-    shopt -s extglob
-    cp -r !(theme-build|.github) $THEME_DIR
-
-      #########################################
-      # Inject screenshot
-      #########################################
-      - name: Add screenshot
+      #############################################
+      # Create backup folder on server (safe)
+      #############################################
+      - name: Create backup folder
         run: |
-          SRC="/mnt/data/2C101955-4BB9-4665-9DDD-4718E82796B5.jpeg"
-          DEST="./${THEME_DIR}/screenshot.png"
-          if [ -f "$SRC" ]; then cp "$SRC" "$DEST"; fi
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} -p ${{ secrets.SSH_PORT }} \
+            "mkdir -p $REMOTE_BACKUP_DIR"
 
-      #########################################
-      # Server Backup (SSH)
-      #########################################
-      - name: Create backup on server
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          SSH_USER: ${{ secrets.SSH_USER }}
+      #############################################
+      # Backup current theme
+      #############################################
+      - name: Backup current production theme
         run: |
-          TS=$(date +%Y%m%d-%H%M%S)
-          ssh -p $SSH_PORT $SSH_USER@$SSH_HOST "
-            mkdir -p $REMOTE_BACKUP_DIR &&
-            cd $REMOTE_THEME_DIR &&
-            zip -r $REMOTE_BACKUP_DIR/theme-$TS.zip .
-          "
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} -p ${{ secrets.SSH_PORT }} \
+            "cp -r $REMOTE_THEME_DIR $REMOTE_BACKUP_DIR/theme-backup-$(date +'%Y%m%d%H%M')"
 
-      #########################################
-      # FTP DEPLOY (fixed version)
-      #########################################
-      - name: Deploy to Hostinger FTP
-        uses: SamKirkland/FTP-Deploy-Action@4.3.0
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT || '21' }}
-          protocol: ftp
-          local-dir: $THEME_DIR
-          server-dir: $REMOTE_THEME_DIR
-          exclude: |
-            **/.github*
-            **/.git*
-            **/node_modules
-
-      #########################################
-      # Upload ZIP artifact
-      #########################################
-      - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: theme-production
-          path: $THEME_DIR
+      #############################################
+      # Upload new theme
+      #############################################
+      - name: Upload new theme via rsync
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            $THEME_DIR/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$REMOTE_THEME_DIR
