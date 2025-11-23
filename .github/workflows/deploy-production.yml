@@ -32,23 +32,23 @@ jobs:
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "mkdir -p '${REMOTE_BACKUP_DIR}'"
 
-      
-- name: Backup current theme
-        run: |
-          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" << 'EOF'
-            THEME_DIR="${REMOTE_THEME_DIR}"
-            BACKUP_DIR="${REMOTE_BACKUP_DIR}"
-            TS=$(date +"%Y%m%d-%H%M%S")
+    - name: Backup current theme
+  run: |
+    ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
+      "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" << 'EOF'
+THEME_DIR="${REMOTE_THEME_DIR}"
+BACKUP_DIR="${REMOTE_BACKUP_DIR}"
+TS=$(date +"%Y%m%d-%H%M%S")
 
-            if [ -d "$THEME_DIR" ]; then
-              mkdir -p "$BACKUP_DIR"
-              cp -a "$THEME_DIR" "${BACKUP_DIR}/backup-$TS"
-              echo "Backup created: backup-$TS"
-            else
-              echo "No existing theme found — skipping backup."
-            fi
+if [ -d "$THEME_DIR" ]; then
+  mkdir -p "$BACKUP_DIR"
+  cp -a "$THEME_DIR" "${BACKUP_DIR}/backup-$TS"
+  echo "Backup created: backup-$TS"
+else
+  echo "No existing theme found — skipping backup."
+fi
 EOF
+
       - name: Upload theme using rsync
         run: |
           rsync -avz --delete \
