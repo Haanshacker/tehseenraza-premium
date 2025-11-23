@@ -1,6 +1,5 @@
 name: Deploy WordPress Theme to Production (Hostinger)
 
-# Trigger on push to main (change branch if you use another)
 on:
   push:
     branches:
@@ -10,82 +9,66 @@ permissions:
   contents: read
 
 env:
-  # Local theme folder in the repo (adjust if necessary)
-  # If your theme files are inside a folder named `tehseenraza-premium` in the repo, set that.
-  # If your theme files are at repo root, keep '.' and we will exclude .github and .git.
   THEME_DIR: tehseenraza-premium
-
-  # Remote (Hostinger) paths — I inserted your username as requested
-  REMOTE_THEME_DIR: "/home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/tehseenraza-premium/"
-  REMOTE_BACKUP_DIR: "/home/u711730434/domains/tehseenraza.net/backups/theme-backup/"
+  REMOTE_THEME_DIR: "/home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/tehseenraza-premium"
+  REMOTE_BACKUP_DIR: "/home/u711730434/domains/tehseenraza.net/backups/theme-backup"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
 
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Setup SSH agent (load private key)
+      - name: Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Ensure remote backup directory exists
+      - name: Ensure backup folder exists on server
         run: |
-          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "mkdir -p '${{ env.REMOTE_BACKUP_DIR }}' && chmod 700 '${{ env.REMOTE_BACKUP_DIR }}' || true"
+          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "mkdir -p '${{ env.REMOTE_BACKUP_DIR }}'"
 
-      - name: Backup current production theme (if exists)
-        id: backup
+      - name: Backup existing theme (if exists)
         run: |
-          # Check if remote theme directory exists. If yes, copy it to backup with timestamp.
-          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash -s <<'SSH_END'
-            set -e
-            REMOTE_THEME="{{ REMOTE_THEME_DIR }}"
-            BACKUP_DIR="{{ REMOTE_BACKUP_DIR }}"
-            # Expand environment variables (GitHub will not expand inside here), so replace placeholders:
-SSH_END
+          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash <<EOF
+              set -e
+              if [ -d "${REMOTE_THEME_DIR}" ]; then
+                TS=$(date +"%Y%m%d-%H%M%S")
+                mkdir -p "${REMOTE_BACKUP_DIR}"
+                cp -a "${REMOTE_THEME_DIR}" "${REMOTE_BACKUP_DIR}/backup-\$TS"
+                echo "Backup created: backup-\$TS"
+              else
+                echo "No existing theme to backup."
+              fi
+EOF
         env:
           REMOTE_THEME_DIR: ${{ env.REMOTE_THEME_DIR }}
           REMOTE_BACKUP_DIR: ${{ env.REMOTE_BACKUP_DIR }}
-      - name: Perform backup and get status
-        run: |
-          # This step performs a safe conditional backup on the remote server.
-          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" bash -s <<'SSH'
-            set -e
-            REMOTE_THEME_DIR='${REMOTE_THEME_DIR}'
-            REMOTE_BACKUP_DIR='${REMOTE_BACKUP_DIR}'
-            TIMESTAMP=$(date +'%Y%m%d%H%M%S')
-            if [ -d "$REMOTE_THEME_DIR" ]; then
-              mkdir -p "$REMOTE_BACKUP_DIR"
-              cp -a "$REMOTE_THEME_DIR" "${REMOTE_BACKUP_DIR}theme-backup-${TIMESTAMP}"
-              echo "BACKUP_DONE=1"
-            else
-              echo "BACKUP_DONE=0"
-            fi
-SSH
 
-      - name: Upload new theme via rsync (safe)
+      - name: Upload theme using rsync
         run: |
-          echo "Uploading theme from local '${THEME_DIR}' to remote '${REMOTE_THEME_DIR}'"
-          # If THEME_DIR is '.' we exclude .github and .git to avoid uploading workflows
-          EXCLUDES="--exclude='.github' --exclude='.git' --exclude='node_modules' --exclude='*.log'"
-          rsync -avz --delete $EXCLUDES \
+          echo "Uploading theme…"
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules' \
             -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=no" \
             "${THEME_DIR}/" \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${REMOTE_THEME_DIR}"
 
-      - name: Set remote file permissions (optional)
+      - name: Fix permissions
         run: |
-          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" <<'SSH'
-            chmod -R 755 "${REMOTE_THEME_DIR}" || true
-SSH
+          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "chmod -R 755 '${REMOTE_THEME_DIR}'"
         env:
           REMOTE_THEME_DIR: ${{ env.REMOTE_THEME_DIR }}
 
-      - name: Complete
-        run: echo "Deploy finished"
+      - name: Done
+        run: echo "Deployment completed successfully!"
