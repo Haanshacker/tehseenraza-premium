@@ -1,4 +1,4 @@
-name: Deploy WordPress Theme to Production (Hostinger)
+name: Deploy WordPress Theme via SFTP (Hostinger)
 
 on:
   push:
@@ -8,62 +8,42 @@ on:
 permissions:
   contents: read
 
-env:
-  THEME_DIR: tehseenraza-premium
-  REMOTE_THEME_DIR: "/home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/tehseenraza-premium/"
-  REMOTE_BACKUP_DIR: "/home/u711730434/domains/tehseenraza.net/backups/theme-backup/"
-
 jobs:
   deploy:
+    name: SFTP Deploy
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup SSH
+      - name: Setup SSH Agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Ensure backup folder exists
-        run: |
-          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "mkdir -p '${{ env.REMOTE_BACKUP_DIR }}'"
+      - name: Upload theme via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          privateKey: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name: Backup existing theme (if exists)
-        run: |
-          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" << 'SSH'
-THEME_DIR="${REMOTE_THEME_DIR}"
-BACKUP_DIR="${REMOTE_BACKUP_DIR}"
-TS=$(date +"%Y%m%d-%H%M%S")
+          # Local theme folder from your repo root
+          local_path: "tehseenraza-premium/*"
 
-if [ -d "$THEME_DIR" ]; then
-  mkdir -p "$BACKUP_DIR"
-  cp -a "$THEME_DIR" "${BACKUP_DIR}backup-$TS"
-  echo "Backup created: backup-$TS"
-else
-  echo "No existing theme found — skipping backup."
-fi
-SSH
+          # Remote WP theme directory from Hostinger
+          remote_path: ${{ secrets.REMOTE_THEME_DIR }}
 
-      - name: Upload theme using rsync
-        run: |
-          rsync -avz --delete \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='node_modules' \
-            -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=no" \
-            "${{ env.THEME_DIR }}/" \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.REMOTE_THEME_DIR }}"
+          overwrite: true
+          remove_extra_files: false
 
       - name: Fix permissions
         run: |
           ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "chmod -R 755 '${{ env.REMOTE_THEME_DIR }}'"
+            "chmod -R 755 '${{ secrets.REMOTE_THEME_DIR }}'"
 
       - name: Complete
-        run: echo "Deploy finished successfully 🎉"
+        run: echo "🎉 SFTP Deploy finished successfully!"
