@@ -30,7 +30,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "mkdir -p '${REMOTE_BACKUP_DIR}'"
+            "mkdir -p '${{ env.REMOTE_BACKUP_DIR }}'"
 
       - name: Backup existing theme (if exists)
         run: |
@@ -56,14 +56,14 @@ SSH
             --exclude='.github' \
             --exclude='node_modules' \
             -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=no" \
-            "${THEME_DIR}/" \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${REMOTE_THEME_DIR}"
+            "${{ env.THEME_DIR }}/" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.REMOTE_THEME_DIR }}"
 
       - name: Fix permissions
         run: |
           ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "chmod -R 755 '${REMOTE_THEME_DIR}'"
+            "chmod -R 755 '${{ env.REMOTE_THEME_DIR }}'"
 
       - name: Complete
         run: echo "Deploy finished successfully 🎉"
