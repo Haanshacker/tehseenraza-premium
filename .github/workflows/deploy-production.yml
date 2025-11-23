@@ -1,4 +1,4 @@
-name: Deploy WordPress Theme via SSH + rsync (Hostinger)
+name: Deploy WordPress Theme to Hostinger (SSH + rsync)
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  THEME_DIR: "tehseenraza-premium"
+  THEME_DIR: tehseenraza-premium
   REMOTE_THEME_DIR: "/home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/tehseenraza-premium/"
   REMOTE_BACKUP_DIR: "/home/u711730434/domains/tehseenraza.net/backups/theme-backup/"
 
@@ -34,11 +34,20 @@ jobs:
 
       - name: Backup current theme
         run: |
-          TS=$(date +"%Y%m%d-%H%M%S")
           ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "cp -a '${REMOTE_THEME_DIR}' '${REMOTE_BACKUP_DIR}backup-$TS' || true"
-          echo "Backup created: backup-$TS"
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" << 'EOF'
+THEME_DIR="${REMOTE_THEME_DIR}"
+BACKUP_DIR="${REMOTE_BACKUP_DIR}"
+TS=$(date +"%Y%m%d-%H%M%S")
+
+if [ -d "$THEME_DIR" ]; then
+  mkdir -p "$BACKUP_DIR"
+  cp -a "$THEME_DIR" "${BACKUP_DIR}/backup-$TS"
+  echo "Backup created: backup-$TS"
+else
+  echo "No existing theme found — skipping backup."
+fi
+EOF
 
       - name: Upload theme using rsync
         run: |
@@ -57,4 +66,4 @@ jobs:
             "chmod -R 755 '${REMOTE_THEME_DIR}'"
 
       - name: Deploy complete
-        run: echo "🎉 SSH rsync Deploy finished successfully!"
+        run: echo "🎉 Deployment finished successfully!"
