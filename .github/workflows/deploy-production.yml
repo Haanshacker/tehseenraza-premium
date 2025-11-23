@@ -1,4 +1,4 @@
-name: Deploy WordPress Theme via SFTP (Hostinger)
+name: Deploy via SFTP (Hostinger)
 
 on:
   push:
@@ -9,15 +9,13 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: SFTP Deploy
+  ftp-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup SSH Agent
+      - name: Setup SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
@@ -28,22 +26,16 @@ jobs:
           server: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
-          privateKey: ${{ secrets.SSH_PRIVATE_KEY }}
 
-          # Local theme folder from your repo root
+          # SSH key field name for this action
+          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
           local_path: "tehseenraza-premium/*"
 
-          # Remote WP theme directory from Hostinger
           remote_path: ${{ secrets.REMOTE_THEME_DIR }}
 
-          overwrite: true
-          remove_extra_files: false
+          # Optional: delete extra files on server
+          delete_remote_files: false
 
-      - name: Fix permissions
-        run: |
-          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-            "chmod -R 755 '${{ secrets.REMOTE_THEME_DIR }}'"
-
-      - name: Complete
-        run: echo "🎉 SFTP Deploy finished successfully!"
+          # Optional: only use SFTP
+          sftp_only: true
