@@ -1,26 +1,60 @@
-name: Deploy via SFTP (Hostinger)
+name: Deploy WordPress Theme via SSH + rsync (Hostinger)
 
 on:
   push:
     branches:
       - main
 
+permissions:
+  contents: read
+
+env:
+  THEME_DIR: "tehseenraza-premium"
+  REMOTE_THEME_DIR: "/home/u711730434/domains/tehseenraza.net/public_html/wp-content/themes/tehseenraza-premium/"
+  REMOTE_BACKUP_DIR: "/home/u711730434/domains/tehseenraza.net/backups/theme-backup/"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Upload theme via SFTP
-        uses: appleboy/scp-action@v0.1.7
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          port: ${{ secrets.SSH_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "tehseenraza-premium/*"
-          target: ${{ secrets.REMOTE_THEME_DIR }}
-          overwrite: true
-          strip_components: 0
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Create backup folder (if not exists)
+        run: |
+          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "mkdir -p '${REMOTE_BACKUP_DIR}'"
+
+      - name: Backup current theme
+        run: |
+          TS=$(date +"%Y%m%d-%H%M%S")
+          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "cp -a '${REMOTE_THEME_DIR}' '${REMOTE_BACKUP_DIR}backup-$TS' || true"
+          echo "Backup created: backup-$TS"
+
+      - name: Upload theme using rsync
+        run: |
+          rsync -avz --delete \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='node_modules' \
+            -e "ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=no" \
+            "${THEME_DIR}/" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${REMOTE_THEME_DIR}"
+
+      - name: Fix permissions
+        run: |
+          ssh -o StrictHostKeyChecking=no -p "${{ secrets.SSH_PORT }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "chmod -R 755 '${REMOTE_THEME_DIR}'"
+
+      - name: Deploy complete
+        run: echo "🎉 SSH rsync Deploy finished successfully!"
