@@ -5,37 +5,22 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
-
 jobs:
-  ftp-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Upload theme via SFTP
-        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        uses: appleboy/scp-action@v0.1.7
         with:
-          server: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
+          host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-
-          # SSH key field name for this action
-          ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-          local_path: "tehseenraza-premium/*"
-
-          remote_path: ${{ secrets.REMOTE_THEME_DIR }}
-
-          # Optional: delete extra files on server
-          delete_remote_files: false
-
-          # Optional: only use SFTP
-          sftp_only: true
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "tehseenraza-premium/*"
+          target: ${{ secrets.REMOTE_THEME_DIR }}
+          overwrite: true
+          strip_components: 0
